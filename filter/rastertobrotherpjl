@@ -1,0 +1,160 @@
+#!/bin/sh
+#
+# rastertobrotherpjl -- wrap a PWG Raster stream in the PJL envelope that
+# Brother inkjets advertising "CMD:HBP,PJL" expect.
+#
+# Copyright (C) 2026  brother-pwg-macos contributors
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# CUPS filter calling convention:
+#     argv:  1=job-id  2=user  3=title  4=copies  5=options  6=file
+#     stdin: PWG Raster (when argv[6] is absent)
+#
+# SAFETY RULE, LOAD-BEARING: emit only "@PJL SET", which is job-scoped. Never
+# emit "@PJL DEFAULT" -- that writes the printer's NVRAM and persists beyond
+# the job. test/test_filter.sh asserts its absence; keep it that way.
+
+set -u
+
+JOBID="${1:-0}"
+USERNAME="${2:-unknown}"
+TITLE="${3:-untitled}"
+# argv[4] is copies -- CUPS has already replicated pages upstream.
+OPTIONS="${5:-}"
+INFILE="${6:-}"
+
+log() { echo "DEBUG: rastertobrotherpjl: $*" >&2; }
+
+# opt <name> <default>   -- last occurrence wins, matching CUPS semantics
+opt() {
+    _v=$(printf '%s' "$OPTIONS" \
+         | tr ' \t' '\n\n' \
+         | grep -i "^$1=" \
+         | tail -1 \
+         | cut -d= -f2-)
+    if [ -z "$_v" ]; then printf '%s' "$2"; else printf '%s' "$_v"; fi
+}
+
+# Strip anything that could terminate or escape a PJL quoted string.
+#
+# "@" goes too, which costs nothing and buys an absolute invariant: the string
+# "@PJL DEFAULT" can never appear anywhere in our output, so auditing the rule
+# is one grep rather than an argument about how each firmware's PJL parser
+# treats text inside quotes. A document titled 'x" @PJL DEFAULT ...' cannot
+# reach the printer as anything but inert characters. The only cost is an "@"
+# missing from a job name in the printer's log.
+sanitize() { printf '%s' "$1" | tr -d '"@\r\n\033' | cut -c1-64; }
+
+# Keep only digits, so a malformed option can never inject PJL.
+number() { printf '%s' "$1" | tr -cd '0-9'; }
+
+PAGESIZE=$(opt PageSize A4)
+COLORMODEL=$(opt ColorModel RGB)
+MEDIATYPE=$(opt BRMediaType Plain)
+QUALITY=$(opt BRQuality Normal)
+
+# Borderless rides on Apple's page-size convention: a PageSize ending in
+# ".Fullbleed" means edge to edge. Verified on a DCP-T220 -- the plain paper
+# token plus BORDERLESS=ON is sufficient, so we do not guess at "A4_B".
+PJL_BORDERLESS=OFF
+case "$PAGESIZE" in
+    *.Fullbleed|*.fullbleed)
+        PJL_BORDERLESS=ON
+        PAGESIZE="${PAGESIZE%.*}"
+        ;;
+esac
+
+# Margins in 1/100 mm. Verified on hardware: 0 lands the full-sheet raster
+# correctly, with under 1 mm lost on every edge. Non-zero values shift the
+# image and clip the far edges, so 0 is the default rather than 300.
+if [ "$PJL_BORDERLESS" = ON ]; then
+    JT_TOP=0; JT_BOT=0; JT_LEFT=0; JT_RIGHT=0
+else
+    JT_ALL=$(number "$(opt BRJTMargin 0)")
+    [ -n "$JT_ALL" ] || JT_ALL=0
+    JT_TOP=$(number "$(opt BRJTTop "$JT_ALL")")
+    JT_BOT=$(number "$(opt BRJTBottom "$JT_ALL")")
+    JT_LEFT=$(number "$(opt BRJTLeft "$JT_ALL")")
+    JT_RIGHT=$(number "$(opt BRJTRight "$JT_ALL")")
+    for v in TOP BOT LEFT RIGHT; do
+        eval "[ -n \"\$JT_$v\" ] || JT_$v=$JT_ALL"
+    done
+fi
+
+case "$PAGESIZE" in
+    A4|a4|iso_a4*)            PJL_PAPER=A4        ;;
+    Letter|letter|na_letter*) PJL_PAPER=LETTER    ;;
+    Legal|legal|na_legal*)    PJL_PAPER=LEGAL     ;;
+    Executive|executive)      PJL_PAPER=EXECUTIVE ;;
+    A5|a5|iso_a5*)            PJL_PAPER=A5        ;;
+    A6|a6|iso_a6*)            PJL_PAPER=A6        ;;
+    4x6)                      PJL_PAPER=4X6       ;;
+    5x7)                      PJL_PAPER=5X7       ;;
+    5x8)                      PJL_PAPER=5X8       ;;
+    3.5x5)                    PJL_PAPER=3.5X5     ;;
+    Env10)                    PJL_PAPER=COM10     ;;
+    EnvDL)                    PJL_PAPER=DL        ;;
+    EnvC5)                    PJL_PAPER=C5        ;;
+    EnvMonarch)               PJL_PAPER=MONARCH   ;;
+    *)                        PJL_PAPER=A4        ;;
+esac
+
+case "$COLORMODEL" in
+    Gray|gray|Grayscale|sgray*|W|w) PJL_RENDER=GRAYSCALE ;;
+    *)                              PJL_RENDER=COLOR     ;;
+esac
+
+case "$MEDIATYPE" in
+    Glossy|glossy) PJL_MEDIA=GLOSSY ;;
+    Inkjet|inkjet) PJL_MEDIA=INKJET ;;
+    *)             PJL_MEDIA=PLAIN  ;;
+esac
+
+# Quality and raster resolution are coupled on this hardware -- 600 dpi at
+# NORMAL prints coarser than the raster it was given. The PPD sets
+# HWResolution from this same option so the pair can never disagree.
+case "$QUALITY" in
+    Draft|draft)                               PJL_QUALITY=DRAFT  ;;
+    Best|best|Photo|photo|Fine|fine|High|high) PJL_QUALITY=HIGH   ;;
+    *)                                         PJL_QUALITY=NORMAL ;;
+esac
+
+JOBNAME=$(sanitize "$TITLE")
+PJLUSER=$(sanitize "$USERNAME")
+[ -n "$JOBNAME" ] || JOBNAME="CUPS job $JOBID"
+[ -n "$PJLUSER" ] || PJLUSER="unknown"
+
+log "paper=$PJL_PAPER quality=$PJL_QUALITY render=$PJL_RENDER media=$PJL_MEDIA"
+log "borderless=$PJL_BORDERLESS margins T=$JT_TOP B=$JT_BOT L=$JT_LEFT R=$JT_RIGHT"
+
+UEL=$(printf '\033%s' '%-12345X')
+
+printf '%s' "$UEL"
+printf '@PJL JOB NAME="%s"\r\n'        "$JOBNAME"
+printf '@PJL SET JOBNAME="%s"\r\n'     "$JOBNAME"
+printf '@PJL SET USERNAME="%s"\r\n'    "$PJLUSER"
+printf '@PJL SET FIDELITY=TRUE\r\n'
+printf '@PJL SET PAPER=%s\r\n'         "$PJL_PAPER"
+printf '@PJL SET MEDIATYPE=%s\r\n'     "$PJL_MEDIA"
+printf '@PJL SET PRINTQUALITY=%s\r\n'  "$PJL_QUALITY"
+printf '@PJL SET RENDERMODE=%s\r\n'    "$PJL_RENDER"
+printf '@PJL SET DUPLEX=OFF\r\n'
+printf '@PJL SET BORDERLESS=%s\r\n'    "$PJL_BORDERLESS"
+printf '@PJL SET JTTOPMARGIN=%s\r\n'   "$JT_TOP"
+printf '@PJL SET JTBOTMARGIN=%s\r\n'   "$JT_BOT"
+printf '@PJL SET JTLEFTMARGIN=%s\r\n'  "$JT_LEFT"
+printf '@PJL SET JTRIGHTMARGIN=%s\r\n' "$JT_RIGHT"
+printf '@PJL ENTER LANGUAGE=PWGRASTER\r\n'
+
+if [ -n "$INFILE" ]; then
+    cat -- "$INFILE" || { log "failed reading $INFILE"; exit 1; }
+else
+    cat || { log "failed reading stdin"; exit 1; }
+fi
+
+printf '%s' "$UEL"
+printf '@PJL EOJ NAME="%s"\r\n' "$JOBNAME"
+printf '%s' "$UEL"
+
+log "done"
+exit 0
