@@ -11,8 +11,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 PASS=0; FAIL=0
-RED=$'\033[31m'; GRN=$'\033[32m'; OFF=$'\033[0m'
+RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; OFF=$'\033[0m'
 ok()   { PASS=$((PASS+1)); printf '  %sok%s   %s\n' "$GRN" "$OFF" "$1"; }
+skip() { printf '  %sskip%s %s\n' "$YEL" "$OFF" "$1"; }
 nope() { FAIL=$((FAIL+1)); printf '  %sFAIL%s %s\n        %s\n' "$RED" "$OFF" "$1" "$2"; }
 
 # Fingerprint the install directory BEFORE anything runs. Asserting the
@@ -74,7 +75,7 @@ if [ -n "$CTP" ]; then
     [ ! -s "$TMP/ctp.txt" ] && ok "cupstestppd accepts the PPD install.sh would write" \
         || nope "cupstestppd accepts the PPD install.sh would write" "$(head -5 "$TMP/ctp.txt")"
 else
-    nope "cupstestppd present" "not on PATH"
+    skip "cupstestppd not on PATH -- PPD validation not run here"
 fi
 
 echo "== usage errors =="

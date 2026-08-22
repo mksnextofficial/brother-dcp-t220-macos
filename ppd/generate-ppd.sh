@@ -26,6 +26,16 @@ TEMPLATE="$HERE/template.ppd"
     echo "usage: generate-ppd.sh <model> <filter-abs-path> [models.tsv]" >&2
     exit 4
 }
+
+# "*" is the fallback ROW, not a model. Asking for it by name would emit
+# *ModelName: "Brother *", and a "*" inside a PPD string is illegal -- so the
+# result would be a quietly invalid PPD. Pass a real model name; unknown ones
+# land on the fallback row automatically.
+[ "$MODEL" = "*" ] && {
+    echo "'*' is the fallback row, not a model name. Pass the real model; an
+unrecognised one uses the fallback row's capabilities automatically." >&2
+    exit 4
+}
 [ -f "$TSV" ]      || { echo "no such table: $TSV" >&2; exit 4; }
 [ -f "$TEMPLATE" ] || { echo "no such template: $TEMPLATE" >&2; exit 4; }
 

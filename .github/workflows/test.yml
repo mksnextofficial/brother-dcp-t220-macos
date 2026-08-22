@@ -1,0 +1,75 @@
+name: tests
+
+# The whole suite runs without a printer, without root and without changing the
+# system, so a plain macOS runner can verify every pull request. That matters
+# here because most contributions will be rows added to ppd/models.tsv by people
+# who own one model and cannot test any other.
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: hardware-free suite
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environment
+        run: |
+          sw_vers
+          echo "arch: $(uname -m)"
+          echo "python3: $(python3 --version 2>&1)"
+          echo "cupstestppd: $(command -v cupstestppd || echo 'not present')"
+          echo "rastertopwg: $(ls /usr/libexec/cups/filter/rastertopwg 2>/dev/null || echo 'not present')"
+
+      - name: Run the suite
+        run: bash test/run-all.sh
+
+      - name: The filter must never emit @PJL DEFAULT
+        # Called out as its own step so the safety rule is visible in the CI
+        # log rather than buried in the suite. @PJL DEFAULT writes the
+        # printer's NVRAM and persists beyond the job; @PJL SET does not.
+        # See docs/protocol.md.
+        run: |
+          if grep -n 'PJL DEFAULT' filter/rastertobrotherpjl \
+             | grep -v '^[0-9]*:#'; then
+            echo "::error file=filter/rastertobrotherpjl::@PJL DEFAULT found outside a comment -- it writes printer NVRAM and must never be emitted"
+            exit 1
+          fi
+          echo "ok: no @PJL DEFAULT outside comments"
+
+      - name: Generated PPDs are valid for every model in the table
+        # Guards against a typo in models.tsv producing a broken PPD, which is
+        # the most likely way a contributed row goes wrong.
+        run: |
+          rc=0
+          filt="$PWD/filter/rastertobrotherpjl"
+          while IFS=$'\t' read -r model rest; do
+            case "$model" in ''|'#'*) continue ;; esac
+            # "*" is the fallback row, not a model. Exercise its capabilities
+            # under a synthetic name -- that covers the same code path an
+            # unrecognised printer takes, and yields a legal PPD.
+            label="$model"
+            [ "$model" = "*" ] && { model="GENERIC-FALLBACK-TEST"; label="* (as $model)"; }
+            printf 'checking %-24s ' "$label"
+            if ./ppd/generate-ppd.sh "$model" "$filt" ppd/models.tsv > /tmp/m.ppd 2>/tmp/m.err; then
+              if command -v cupstestppd >/dev/null; then
+                if cupstestppd "/tmp/m.ppd" 2>&1 | grep -E '\*\*FAIL\*\*' \
+                     | grep -vE 'cupsFilter file' > /tmp/m.ctp; then
+                  echo "FAIL"; cat /tmp/m.ctp; rc=1
+                else
+                  echo "ok"
+                fi
+              else
+                echo "generated (cupstestppd unavailable)"
+              fi
+            else
+              echo "FAIL"; cat /tmp/m.err; rc=1
+            fi
+          done < ppd/models.tsv
+          exit $rc

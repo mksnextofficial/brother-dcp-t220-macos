@@ -16,8 +16,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 PASS=0; FAIL=0
-RED=$'\033[31m'; GRN=$'\033[32m'; OFF=$'\033[0m'
+RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; OFF=$'\033[0m'
 ok()   { PASS=$((PASS+1)); printf '  %sok%s   %s\n' "$GRN" "$OFF" "$1"; }
+skip() { printf '  %sskip%s %s\n' "$YEL" "$OFF" "$1"; }
 nope() { FAIL=$((FAIL+1)); printf '  %sFAIL%s %s\n        %s\n' "$RED" "$OFF" "$1" "$2"; }
 
 # check <description> <file> <extended-regex>
@@ -102,7 +103,7 @@ if [ -n "$CTP" ]; then
         fi
     done
 else
-    nope "cupstestppd present" "cupstestppd not on PATH"
+    skip "cupstestppd not on PATH -- PPD validation not run here"
 fi
 
 echo "== malformed input =="
@@ -117,6 +118,10 @@ printf '# only a comment\n' > "$TMP/empty.tsv"
 
 "$GEN" >/dev/null 2>&1
 [ $? -eq 4 ] && ok "missing arguments exits 4" || nope "missing arguments exits 4" "got $?"
+
+"$GEN" '*' "$FILT" "$TSV" >/dev/null 2>&1
+[ $? -eq 4 ] && ok "the '*' fallback row is refused as a model name" \
+             || nope "the '*' fallback row is refused as a model name" "got $?"
 
 echo
 echo "passed: $PASS   failed: $FAIL"
