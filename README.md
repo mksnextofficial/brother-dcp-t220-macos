@@ -65,6 +65,24 @@ sudo ./uninstall.sh
 It removes the queue it created and its own install directory, and nothing else.
 Brother's software is never modified or removed; existing queues are left alone.
 
+## Print quality
+
+Quality and raster resolution ship as **one** control, because on this hardware
+they are coupled: 600 dpi raster sent at `PRINTQUALITY=NORMAL` prints coarser
+than the raster it was given. Two knobs would only let you pair them wrongly.
+
+| Setting | Raster | Use for |
+|---|---|---|
+| Draft | 300 dpi | proofs, maximum speed |
+| **Normal** (default) | 600 dpi | everyday text |
+| Best | 600 dpi | line art, small type, anything detailed |
+| Photo | 1200 dpi | photographs |
+
+On the DCP-T220, `Photo` did not resolve any finer than `Best` in either axis
+and costs roughly four times the data over USB 2.0. It is offered, not
+recommended. The measurements behind all of this are in
+[docs/protocol.md](docs/protocol.md).
+
 ## Model support
 
 | Model | Status |
@@ -72,8 +90,60 @@ Brother's software is never modified or removed; existing queues are left alone.
 | DCP-T220 | verified on hardware |
 | other Brother inkjets reporting `CMD:HBP` | generic profile, unverified |
 
-Unverified models get a conservative profile and a warning at install time.
-To qualify yours, see [docs/contributing-a-model.md](docs/contributing-a-model.md).
+Unverified models get a conservative profile — no borderless, no Photo — and a
+warning at install time. Qualifying yours takes about twenty minutes and four
+sheets of paper: [docs/contributing-a-model.md](docs/contributing-a-model.md).
+
+## Troubleshooting
+
+**Jobs sit at "Looking for printer" forever.** This is almost always the *old*
+Brother queue, not this one. Brother's `com.brother.HttpToUsbBridge` LaunchAgent
+has to be running for their queue to work, and when it is not, jobs queue up
+indefinitely — one of the machines this was developed on had a job stuck for over
+a month.
+
+```bash
+lpstat -o                      # what is queued, and since when
+lpstat -l -p Brother_PWG       # queue state and any alerts
+cancel -a                      # clear everything stuck
+```
+
+**Nothing prints, no error.** Check the printer is on the USB bus at all:
+
+```bash
+/usr/sbin/lpinfo -v | grep -i brother
+```
+
+**Diagnose a job.** The filter logs its resolved settings for every job:
+
+```bash
+sudo grep rastertobrotherpjl /var/log/cups/error_log | tail
+```
+
+**Check the whole install.** Runs the round trip and prints one page:
+
+```bash
+./test/verify-hardware.sh
+```
+
+## Going back to iPrint&Scan
+
+Nothing here modifies or removes Brother's software, so it is still there.
+Remove this driver and start their bridge:
+
+```bash
+sudo ./uninstall.sh
+sudo launchctl load /Library/LaunchAgents/com.brother.HttpToUsbBridge.plist
+```
+
+## Testing
+
+Everything except the hardware checks runs on any Mac, with no printer, no root
+and no system change:
+
+```bash
+bash test/run-all.sh
+```
 
 ## Documentation
 
