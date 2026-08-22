@@ -27,6 +27,9 @@ Usage:
     python3 make-testpage.py -o t.pdf --size Letter --label "600dpi Gray"
 """
 
+# Copyright (C) 2026  brother-pwg-macos contributors
+# SPDX-License-Identifier: GPL-2.0-only
+
 import argparse
 import sys
 
