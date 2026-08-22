@@ -1,5 +1,8 @@
 # brother-pwg-macos
 
+[![tests](https://github.com/zama-tui/brother-pwg-macos/actions/workflows/test.yml/badge.svg)](https://github.com/zama-tui/brother-pwg-macos/actions/workflows/test.yml)
+[![licence: GPL-2.0](https://img.shields.io/badge/licence-GPL--2.0-blue.svg)](LICENSE)
+
 A CUPS driver for Brother budget inkjets on macOS, for the models Brother never
 shipped a macOS driver for.
 
