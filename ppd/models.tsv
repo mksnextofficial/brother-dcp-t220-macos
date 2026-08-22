@@ -1,0 +1,23 @@
+# Brother inkjet capability table for brother-pwg-macos.
+#
+# Tab-separated. Lines starting with # are ignored. The "*" row must come last;
+# it is the generic fallback for models nobody has qualified yet.
+#
+# status           "verified" only if someone printed tools/make-testpage.py on
+#                  that hardware and reported the result. Everything else is
+#                  "generic". See docs/contributing-a-model.md.
+# qualities        subset of Draft,Normal,Best,Photo. Resolution is implied:
+#                  Draft=300, Normal=600, Best=600, Photo=1200 dpi. A model that
+#                  cannot reach 1200 dpi simply omits Photo.
+# borderless       page-size keywords that get a .Fullbleed variant, or "none".
+#                  Never populate this for an unverified model: on a printer
+#                  that does not support borderless, ink lands on the platen and
+#                  marks the back of the following pages.
+# trays            integer count; only tray 1 is currently driven.
+#
+# Known page-size keywords: A4 Letter Legal A5 A6 Executive 4x6 5x7 5x8 3.5x5
+#                           Env10 EnvDL EnvC5 EnvMonarch
+#
+# model	status	qualities	default_quality	colour	papersizes	borderless	trays
+DCP-T220	verified	Draft,Normal,Best,Photo	Normal	colour	A4,Letter,Legal,A5,A6,Executive,4x6,5x7,5x8,3.5x5,Env10,EnvDL,EnvC5,EnvMonarch	A4,Letter,A6,4x6,5x7,5x8,3.5x5	1
+*	generic	Draft,Normal,Best	Normal	colour	A4,Letter,Legal,A5,A6,Executive	none	1
