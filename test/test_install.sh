@@ -15,6 +15,18 @@ RED=$'\033[31m'; GRN=$'\033[32m'; OFF=$'\033[0m'
 ok()   { PASS=$((PASS+1)); printf '  %sok%s   %s\n' "$GRN" "$OFF" "$1"; }
 nope() { FAIL=$((FAIL+1)); printf '  %sFAIL%s %s\n        %s\n' "$RED" "$OFF" "$1" "$2"; }
 
+# Fingerprint the install directory BEFORE anything runs. Asserting the
+# directory is simply absent would only be valid on a machine where the driver
+# has never been installed, and would then fail for the wrong reason on one
+# where it is legitimately in use. What matters is that a dry run changes
+# nothing, either way.
+INSTALL_DIR="/Library/Printers/BrotherPWG"
+fingerprint() {
+    if [ -e "$INSTALL_DIR" ]; then ls -laR "$INSTALL_DIR" 2>&1
+    else echo "absent"; fi
+}
+fingerprint > "$TMP/dir.before"
+
 echo "== dry run with an explicit model needs no printer and no root =="
 "$INSTALL" --dry-run --model DCP-T220 > "$TMP/out.txt" 2>&1
 rc=$?
@@ -27,8 +39,16 @@ grep -q '/Library/Printers/BrotherPWG' "$TMP/out.txt" && ok "names the install p
     || nope "names the install path" "install path not shown"
 
 echo "== dry run makes no system change =="
-[ ! -e /Library/Printers/BrotherPWG ] && ok "did not create the install dir" \
-    || nope "did not create the install dir" "/Library/Printers/BrotherPWG exists"
+fingerprint > "$TMP/dir.after"
+if diff -q "$TMP/dir.before" "$TMP/dir.after" >/dev/null; then
+    if [ "$(cat "$TMP/dir.before")" = "absent" ]; then
+        ok "install dir still absent"
+    else
+        ok "install dir unchanged (driver is installed on this machine)"
+    fi
+else
+    nope "install dir unchanged" "$(diff "$TMP/dir.before" "$TMP/dir.after" | head -5)"
+fi
 
 echo "== an unknown model warns loudly =="
 "$INSTALL" --dry-run --model DCP-T999-NOSUCH > "$TMP/unk.txt" 2>&1
