@@ -15,11 +15,8 @@ FILT="$(cd "$HERE/../filter" && pwd)/rastertobrotherpjl"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-PASS=0; FAIL=0
-RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; OFF=$'\033[0m'
-ok()   { PASS=$((PASS+1)); printf '  %sok%s   %s\n' "$GRN" "$OFF" "$1"; }
-skip() { printf '  %sskip%s %s\n' "$YEL" "$OFF" "$1"; }
-nope() { FAIL=$((FAIL+1)); printf '  %sFAIL%s %s\n        %s\n' "$RED" "$OFF" "$1" "$2"; }
+# shellcheck source=test/lib.sh
+. "$HERE/lib.sh"
 
 # check <description> <file> <extended-regex>
 check() { grep -qE -- "$3" "$2" && ok "$1" || nope "$1" "no line matching: $3"; }
@@ -106,23 +103,48 @@ else
     skip "cupstestppd not on PATH -- PPD validation not run here"
 fi
 
+echo "== a mono model describes itself as mono throughout =="
+# No row in models.tsv is mono, but docs/contributing-a-model.md tells
+# contributors to write it, so the path has to hold up before one arrives.
+printf 'MONO-TEST\tverified\tDraft,Normal,Best\tNormal\tmono\tA4,Letter\tnone\t1\n' \
+    > "$TMP/mono.tsv"
+"$GEN" MONO-TEST "$FILT" "$TMP/mono.tsv" > "$TMP/mono.ppd" 2>/dev/null
+check "mono keeps Grayscale"        "$TMP/mono.ppd" '^\*ColorModel Gray'
+deny  "mono drops the RGB choice"   "$TMP/mono.ppd" '^\*ColorModel RGB'
+check "mono defaults to Gray"       "$TMP/mono.ppd" '^\*DefaultColorModel: Gray'
+check "mono is not a ColorDevice"   "$TMP/mono.ppd" '^\*ColorDevice: False'
+check "mono colour space is Gray"   "$TMP/mono.ppd" '^\*DefaultColorSpace: Gray'
+if [ -n "$(command -v cupstestppd || true)" ]; then
+    cupstestppd "$TMP/mono.ppd" 2>&1 | grep -E '\*\*FAIL\*\*' \
+        | grep -vE 'cupsFilter file' > "$TMP/mono.ctp" || true
+    [ ! -s "$TMP/mono.ctp" ] && ok "cupstestppd accepts the mono PPD" \
+        || nope "cupstestppd accepts the mono PPD" "$(head -5 "$TMP/mono.ctp")"
+fi
+
 echo "== malformed input =="
 printf 'BAD\tROW\n' > "$TMP/bad.tsv"
-"$GEN" BAD "$FILT" "$TMP/bad.tsv" >/dev/null 2>&1
-[ $? -eq 3 ] && ok "malformed row exits 3" || nope "malformed row exits 3" "got $?"
+assert_status 3 "malformed row exits 3" "$GEN" BAD "$FILT" "$TMP/bad.tsv"
 
 printf '# only a comment\n' > "$TMP/empty.tsv"
-"$GEN" ANYTHING "$FILT" "$TMP/empty.tsv" >/dev/null 2>&1
-[ $? -eq 2 ] && ok "no match and no fallback exits 2" \
-             || nope "no match and no fallback exits 2" "got $?"
+assert_status 2 "no match and no fallback exits 2" "$GEN" ANYTHING "$FILT" "$TMP/empty.tsv"
 
-"$GEN" >/dev/null 2>&1
-[ $? -eq 4 ] && ok "missing arguments exits 4" || nope "missing arguments exits 4" "got $?"
+assert_status 4 "missing arguments exits 4" "$GEN"
+assert_status 4 "the '*' fallback row is refused as a model name" \
+    "$GEN" '*' "$FILT" "$TSV"
 
-"$GEN" '*' "$FILT" "$TSV" >/dev/null 2>&1
-[ $? -eq 4 ] && ok "the '*' fallback row is refused as a model name" \
-             || nope "the '*' fallback row is refused as a model name" "got $?"
+# A model name is substituted into PPD quoted strings and into sed replacement
+# text, and it comes from the printer's device-id. Anything outside the plain
+# model-name character set has to be refused rather than escaped, because a
+# corrupt PPD here would be installed without complaint.
+for bad in 'X"Y' 'A&B' 'DCP|EVIL' 'back\slash'; do
+    assert_status 4 "hostile model name is refused: $bad" "$GEN" "$bad" "$FILT" "$TSV"
+done
 
-echo
-echo "passed: $PASS   failed: $FAIL"
-[ "$FAIL" -eq 0 ]
+# A filter path may legitimately contain sed metacharacters; those must survive
+# substitution rather than be rejected.
+odd="$TMP/a&b|c/rastertobrotherpjl"
+"$GEN" DCP-T220 "$odd" "$TSV" > "$TMP/odd.ppd" 2>/dev/null
+check "sed metacharacters in the filter path survive" "$TMP/odd.ppd" \
+    "$(printf '%s' "$odd" | sed 's/[][\\.*^$|&]/\\\\&/g')"
+
+summary

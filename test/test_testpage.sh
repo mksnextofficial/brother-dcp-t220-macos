@@ -10,13 +10,11 @@ TOOL="$HERE/../tools/make-testpage.py"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-PY="$(command -v python3 || true)"
-PASS=0; FAIL=0
-RED=$'\033[31m'; GRN=$'\033[32m'; OFF=$'\033[0m'
-ok()   { PASS=$((PASS+1)); printf '  %sok%s   %s\n' "$GRN" "$OFF" "$1"; }
-nope() { FAIL=$((FAIL+1)); printf '  %sFAIL%s %s\n        %s\n' "$RED" "$OFF" "$1" "$2"; }
+# shellcheck source=test/lib.sh
+. "$HERE/lib.sh"
 
-[ -n "$PY" ] || { nope "python3 present" "not on PATH"; echo "passed: 0 failed: 1"; exit 1; }
+PY="$(command -v python3 || true)"
+[ -n "$PY" ] || { nope "python3 present" "not on PATH"; summary; exit 1; }
 
 echo "== licence header =="
 grep -q 'SPDX-License-Identifier: GPL-2.0-only' "$TOOL" \
@@ -69,6 +67,4 @@ echo "== bad input is rejected =="
 "$PY" "$TOOL" -o "$TMP/x.pdf" --focus NOPE >/dev/null 2>&1 \
     && nope "unknown --focus is rejected" "exited 0" || ok "unknown --focus is rejected"
 
-echo
-echo "passed: $PASS   failed: $FAIL"
-[ "$FAIL" -eq 0 ]
+summary

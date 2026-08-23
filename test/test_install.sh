@@ -10,11 +10,8 @@ INSTALL="$HERE/../install.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-PASS=0; FAIL=0
-RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; OFF=$'\033[0m'
-ok()   { PASS=$((PASS+1)); printf '  %sok%s   %s\n' "$GRN" "$OFF" "$1"; }
-skip() { printf '  %sskip%s %s\n' "$YEL" "$OFF" "$1"; }
-nope() { FAIL=$((FAIL+1)); printf '  %sFAIL%s %s\n        %s\n' "$RED" "$OFF" "$1" "$2"; }
+# shellcheck source=test/lib.sh
+. "$HERE/lib.sh"
 
 # Fingerprint the install directory BEFORE anything runs. Asserting the
 # directory is simply absent would only be valid on a machine where the driver
@@ -79,8 +76,7 @@ else
 fi
 
 echo "== usage errors =="
-"$INSTALL" --nonsense >/dev/null 2>&1
-[ $? -eq 4 ] && ok "unknown flag exits 4" || nope "unknown flag exits 4" "got $?"
+assert_status 4 "unknown flag exits 4" "$INSTALL" --nonsense
 "$INSTALL" --help 2>&1 | grep -qi 'dry-run' && ok "--help documents --dry-run" \
     || nope "--help documents --dry-run" "not mentioned"
 
@@ -89,6 +85,4 @@ echo "== queue name is configurable =="
 grep -q 'MyPrinter' "$TMP/q.txt" && ok "--queue is honoured" \
     || nope "--queue is honoured" "queue name not shown"
 
-echo
-echo "passed: $PASS   failed: $FAIL"
-[ "$FAIL" -eq 0 ]
+summary

@@ -10,8 +10,8 @@ FILTER="$HERE/../filter/rastertobrotherpjl"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-PASS=0; FAIL=0
-RED=$'\033[31m'; GRN=$'\033[32m'; OFF=$'\033[0m'
+# shellcheck source=test/lib.sh
+. "$HERE/lib.sh"
 
 # A stand-in raster payload. The filter never parses it, so real PWG content is
 # not needed -- but it must contain no 0x1b, or the ESC-injection test below
@@ -28,9 +28,6 @@ run() {   # run <options>
     "$FILTER" 42 testuser "test job" 1 "$1" < "$TMP/raster.bin" \
         > "$TMP/out.bin" 2> "$TMP/err.txt"
 }
-
-ok()   { PASS=$((PASS+1)); printf '  %sok%s   %s\n' "$GRN" "$OFF" "$1"; }
-nope() { FAIL=$((FAIL+1)); printf '  %sFAIL%s %s\n        %s\n' "$RED" "$OFF" "$1" "$2"; }
 
 assert_has() {   # <description> <literal>
     if LC_ALL=C grep -aqF -- "$2" "$TMP/out.bin"; then ok "$1"
@@ -173,6 +170,4 @@ else
     ok "exits non-zero when the input file is missing"
 fi
 
-echo
-echo "passed: $PASS   failed: $FAIL"
-[ "$FAIL" -eq 0 ]
+summary

@@ -28,13 +28,11 @@ ROOT="$(cd "$HERE/.." && pwd)"
 QUEUE="Brother_PWG"
 INSTALL_DIR="/Library/Printers/BrotherPWG"
 TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 DO_PRINT=1
 
-RED=$'\033[31m'; GRN=$'\033[32m'; BLU=$'\033[34m'; OFF=$'\033[0m'
-PASS=0; FAIL=0
-ok()   { PASS=$((PASS+1)); printf '  %sok%s   %s\n' "$GRN" "$OFF" "$1"; }
-nope() { FAIL=$((FAIL+1)); printf '  %sFAIL%s %s\n        %s\n' "$RED" "$OFF" "$1" "${2:-}"; }
-step() { echo; echo "${BLU}==> $*${OFF}"; }
+# shellcheck source=test/lib.sh
+. "$HERE/lib.sh"
 
 case "${1:-}" in
     --revert)   step "Reverting"; sudo "$ROOT/uninstall.sh"; exit $? ;;
@@ -46,7 +44,6 @@ esac
 step "Stage A -- round trip: does uninstall really put everything back?"
 
 lpstat -p > "$TMP/before.txt" 2>&1
-cp "$TMP/before.txt" "$TMP/b.txt"
 echo "  queues before:"; sed 's/^/    /' "$TMP/before.txt"
 
 sudo "$ROOT/install.sh" --yes > "$TMP/inst.log" 2>&1 \
@@ -78,6 +75,33 @@ else
 fi
 [ -d "/Applications/Brother iPrint&Scan.app" ] && ok "iPrint&Scan is untouched" \
     || echo "       (iPrint&Scan was not installed here; nothing to check)"
+
+step "Stage A2 -- a second queue must not be orphaned by the first uninstall"
+
+# install.sh can create several queues (--queue NAME) and they all share
+# /Library/Printers/BrotherPWG. Removing one queue must leave those files
+# alone while another still points at them, or the survivor keeps accepting
+# jobs that can never run.
+SECOND="Brother_PWG_2"
+sudo "$ROOT/install.sh" --yes > "$TMP/a2a.log" 2>&1 \
+    && sudo "$ROOT/install.sh" --yes --queue "$SECOND" > "$TMP/a2b.log" 2>&1 \
+    && ok "two queues installed" \
+    || { nope "two queues installed" "$(tail -5 "$TMP/a2b.log")"; exit 1; }
+
+sudo "$ROOT/uninstall.sh" --queue "$QUEUE" > "$TMP/a2c.log" 2>&1
+[ -e "$INSTALL_DIR/rastertobrotherpjl" ] \
+    && ok "driver files survive while '$SECOND' still uses them" \
+    || nope "driver files survive while '$SECOND' still uses them" \
+            "$INSTALL_DIR was removed out from under a live queue"
+lpstat -p "$SECOND" >/dev/null 2>&1 && ok "'$SECOND' is still installed" \
+    || nope "'$SECOND' is still installed" "it disappeared"
+
+sudo "$ROOT/uninstall.sh" --all > "$TMP/a2d.log" 2>&1
+[ ! -e "$INSTALL_DIR" ] && ok "--all removes the files once nothing uses them" \
+    || nope "--all removes the files once nothing uses them" "$INSTALL_DIR remains"
+lpstat -p "$SECOND" >/dev/null 2>&1 \
+    && nope "--all removed '$SECOND'" "still listed" \
+    || ok "--all removed '$SECOND'"
 
 step "Stage B -- install for real and validate the installed copy"
 
@@ -143,5 +167,4 @@ else
     echo "  Something failed above. The system is in whatever state the last"
     echo "  successful step left it; 'sudo $ROOT/uninstall.sh' returns it to clean."
 fi
-rm -rf "$TMP"
 [ "$FAIL" -eq 0 ]
