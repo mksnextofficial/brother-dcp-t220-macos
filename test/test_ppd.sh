@@ -60,7 +60,7 @@ for f in t220 gen; do
         [ -n "$kw" ] || continue
         esc="${kw//./\\.}"
         for sect in PageRegion ImageableArea PaperDimension; do
-            grep -qE "^\*$sect $esc[:/ ]" "$TMP/$f.ppd" \
+            grep -qE "^\*$sect ${esc}[:/ ]" "$TMP/$f.ppd" \
                 || incomplete="$incomplete $f:$kw/$sect"
         done
     done < <(awk '/^\*PageSize /{split($2,a,"/"); k=a[1]; sub(/:$/,"",k); print k}' "$TMP/$f.ppd")
@@ -72,11 +72,11 @@ echo "== defaults name real options =="
 for f in t220 gen; do
     dps=$(awk -F': ' '/^\*DefaultPageSize:/{print $2}' "$TMP/$f.ppd")
     esc="${dps//./\\.}"
-    grep -qE "^\*PageSize $esc[:/ ]" "$TMP/$f.ppd" \
+    grep -qE "^\*PageSize ${esc}[:/ ]" "$TMP/$f.ppd" \
         && ok "$f: DefaultPageSize '$dps' exists" \
         || nope "$f: DefaultPageSize '$dps' exists" "not among the PageSize options"
     dq=$(awk -F': ' '/^\*DefaultBRQuality:/{print $2}' "$TMP/$f.ppd")
-    grep -qE "^\*BRQuality $dq[:/ ]" "$TMP/$f.ppd" \
+    grep -qE "^\*BRQuality ${dq}[:/ ]" "$TMP/$f.ppd" \
         && ok "$f: DefaultBRQuality '$dq' exists" \
         || nope "$f: DefaultBRQuality '$dq' exists" "not among the BRQuality options"
 done
