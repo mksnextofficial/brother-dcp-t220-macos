@@ -21,11 +21,15 @@ FILTER_MARK="$INSTALL_DIR/rastertobrotherpjl"
 QUEUE="Brother_PWG"
 ALL=0
 
-RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; BLU=$'\033[34m'; OFF=$'\033[0m'
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; BLU=$'\033[34m'; OFF=$'\033[0m'
+else
+    RED=''; GRN=''; YEL=''; BLU=''; OFF=''
+fi
 ok()   { echo "${GRN}  ok${OFF}   $*"; }
 info() { echo "       $*"; }
-warn() { echo "${YEL}warning:${OFF} $*" >&2; }
-die()  { echo "${RED}error:${OFF} $*" >&2; exit "${2:-3}"; }
+warn() { printf '%swarning:%s %s\n' "$YEL" "$OFF" "$*" >&2; }
+die()  { printf '%serror:%s %s\n' "$RED" "$OFF" "$1" >&2; exit "${2:-3}"; }
 step() { echo; echo "${BLU}==> $*${OFF}"; }
 
 usage() {
@@ -53,19 +57,25 @@ SUDO=""
 
 # A queue is ours if the PPD CUPS made for it points at our filter.
 queue_is_ours() {
-    local q="$1" ppd="/etc/cups/ppd/$1.ppd"
+    local ppd="/etc/cups/ppd/$1.ppd"
     [ -f "$ppd" ] || return 1
     grep -q "$FILTER_MARK" "$ppd"
+}
+
+# Every queue on this system that uses this driver, one per line.
+our_queues() {
+    local q
+    for q in $(lpstat -p 2>/dev/null | awk '/^printer /{print $2}'); do
+        queue_is_ours "$q" && printf '%s\n' "$q"
+    done
+    return 0
 }
 
 removed_any=0
 
 step "1. Print queues"
 if [ "$ALL" -eq 1 ]; then
-    targets=""
-    for q in $(lpstat -p 2>/dev/null | awk '/^printer /{print $2}'); do
-        queue_is_ours "$q" && targets="$targets $q"
-    done
+    targets="$(our_queues)"
     if [ -z "$targets" ]; then
         info "no queue on this system uses this driver"
     else
@@ -92,7 +102,15 @@ driver, pass --all." 3
 fi
 
 step "2. Driver files"
-if [ -e "$INSTALL_DIR" ]; then
+# install.sh can create more than one queue (--queue NAME), and they all share
+# these files. Removing them while a queue still points here would leave that
+# queue alive with a missing filter -- every job to it would fail, with nothing
+# on screen to explain why. So the files go only once nothing depends on them.
+remaining="$(our_queues)"
+if [ -n "$remaining" ]; then
+    warn "keeping $INSTALL_DIR: still used by $(printf '%s' "$remaining" | tr '\n' ' ')"
+    info "remove those queues as well, or re-run with --all"
+elif [ -e "$INSTALL_DIR" ]; then
     $SUDO rm -rf "$INSTALL_DIR" && { ok "removed $INSTALL_DIR"; removed_any=1; } \
         || die "could not remove $INSTALL_DIR"
 else
@@ -100,7 +118,10 @@ else
 fi
 
 step "Done"
-if [ "$removed_any" -eq 1 ]; then
+if [ -n "$remaining" ]; then
+    echo "  The driver files are still in place, because a queue listed above"
+    echo "  still uses them. Nothing belonging to Brother was touched."
+elif [ "$removed_any" -eq 1 ]; then
     echo "  The driver is gone. Nothing belonging to Brother was touched, and any"
     echo "  other print queue you had is exactly as it was."
 else
