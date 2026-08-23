@@ -44,8 +44,8 @@ PDF → cgpdftoraster → rastertopwg → rastertobrotherpjl → usb:// → prin
 ```
 
 One component is ours: a ~150-line shell script. No compiled code, no Brother
-files redistributed, no reverse engineering — Brother publishes a GPL Linux
-driver, and the protocol is legible in it.
+files redistributed, no disassembly and no traffic capture — Brother publishes a
+GPL Linux driver, and the protocol is legible in it.
 
 ## Install
 
@@ -148,10 +148,20 @@ and no system change:
 bash test/run-all.sh
 ```
 
+## Contributing
+
+The most useful contribution is a row in `ppd/models.tsv` for a model nobody has
+qualified yet. It takes about twenty minutes and four sheets of paper, and needs
+no code: [docs/contributing-a-model.md](docs/contributing-a-model.md).
+
+For anything else, start at [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Documentation
 
 - [docs/protocol.md](docs/protocol.md) — the PJL vocabulary and how it was obtained
 - [docs/contributing-a-model.md](docs/contributing-a-model.md) — qualifying a new model
+- [CONTRIBUTING.md](CONTRIBUTING.md) — tests, conventions, and the load-bearing rules
+- [SECURITY.md](SECURITY.md) — what runs as root, what is trusted, how to report
 
 ## Licence
 

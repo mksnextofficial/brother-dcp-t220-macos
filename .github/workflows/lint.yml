@@ -1,0 +1,45 @@
+name: lint
+
+# Kept in its own workflow so a shellcheck finding cannot turn the tests badge
+# red. The two answer different questions and deserve separate answers.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck if the runner image lacks it
+        run: |
+          command -v shellcheck >/dev/null \
+            || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
+          shellcheck --version
+
+      - name: Check every script in the repository
+        run: |
+          # Anything named *.sh, plus anything with a sh/bash shebang -- which
+          # is how filter/rastertobrotherpjl gets picked up despite having no
+          # extension. Unquoted below on purpose: these are repository paths,
+          # and none of them contains whitespace.
+          files=$(git ls-files | while read -r f; do
+                    case "$f" in *.sh) echo "$f"; continue ;; esac
+                    head -1 "$f" 2>/dev/null | grep -qE '^#!.*([ /]sh|bash)' && echo "$f"
+                  done)
+          echo "checking:"; echo "$files" | sed 's/^/  /'
+
+          echo
+          echo "--- advisory: style and info findings, not a failure ---"
+          # shellcheck disable=SC2086
+          shellcheck --severity=style $files || true
+
+          echo
+          echo "--- gate: errors only ---"
+          # shellcheck disable=SC2086
+          shellcheck --severity=error $files
