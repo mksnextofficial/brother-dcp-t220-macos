@@ -25,7 +25,13 @@ DRY_RUN=0
 EMIT_PPD=0
 ASSUME_YES=0
 
-RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; BLU=$'\033[34m'; OFF=$'\033[0m'
+# Colour only when stdout is a terminal, so a redirected log or a CI transcript
+# is plain text. NO_COLOR is honoured as well: https://no-color.org
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; BLU=$'\033[34m'; OFF=$'\033[0m'
+else
+    RED=''; GRN=''; YEL=''; BLU=''; OFF=''
+fi
 
 # Under --emit-ppd, stdout carries the PPD and nothing else, so every
 # informational line goes to stderr instead.
@@ -33,8 +39,8 @@ msg()  { if [ "$EMIT_PPD" -eq 1 ]; then printf '%s\n' "$*" >&2
          else printf '%s\n' "$*"; fi; }
 say()  { msg "$*"; }
 ok()   { msg "${GRN}  ok${OFF}   $*"; }
-warn() { echo "${YEL}warning:${OFF} $*" >&2; }
-die()  { echo "${RED}error:${OFF} $*" >&2; exit "${2:-3}"; }
+warn() { printf '%swarning:%s %s\n' "$YEL" "$OFF" "$*" >&2; }
+die()  { printf '%serror:%s %s\n' "$RED" "$OFF" "$1" >&2; exit "${2:-3}"; }
 step() { msg ""; msg "${BLU}==> $*${OFF}"; }
 
 usage() {
@@ -147,10 +153,16 @@ fi
 # ------------------------------------------------------------------- profile
 step "2. Match the capability profile"
 PPD_TMP="$(mktemp)"
-trap 'rm -f "$PPD_TMP"' EXIT
+GEN_ERR="$(mktemp)"
+trap 'rm -f "$PPD_TMP" "$GEN_ERR"' EXIT
 
-if ! "$GEN" "$MODEL" "$FILTER_DEST" "$TSV" > "$PPD_TMP" 2>/dev/null; then
-    die "could not generate a PPD for '$MODEL' (generate-ppd.sh exit $?)" 3
+# Pass generate-ppd.sh's own diagnostic through. It names the offending row,
+# field or model name, which is the only thing that makes the failure fixable;
+# "$?" here would report the status of the "!" test, not of the generator.
+if ! "$GEN" "$MODEL" "$FILTER_DEST" "$TSV" > "$PPD_TMP" 2>"$GEN_ERR"; then
+    die "could not generate a PPD for '$MODEL':
+
+$(sed 's/^/    /' "$GEN_ERR")" 3
 fi
 
 if grep -q '^\*NickName:.*unverified' "$PPD_TMP"; then
@@ -235,9 +247,14 @@ ok "created queue '$QUEUE' -> $DEVURI"
 
 # ------------------------------------------------------------------- done
 step "Done"
+# Read the option lists back out of the PPD that was just installed, so this
+# can never promise a choice the profile does not actually contain.
+QUALITIES="$(awk '/^\*BRQuality /{split($2,a,"/"); q=a[1]; sub(/:$/,"",q);
+                  printf "%s%s", sep, q; sep=" / "}' "$PPD_TMP")"
+MEDIA_N="$(grep -c '^\*BRMediaType ' "$PPD_TMP")"
 cat <<EOF
   Print to '$QUEUE' from any application. In the print dialog you should see
-  Print Quality with Draft / Normal / Best$([ "$STATUS" = verified ] && echo " / Photo"), and Media Type with three choices.
+  Print Quality with $QUALITIES, and Media Type with $MEDIA_N choices.
 
   Nothing belonging to Brother was modified or removed. iPrint&Scan and any
   queue you already had still work exactly as before.
