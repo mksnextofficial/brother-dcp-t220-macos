@@ -3,7 +3,9 @@
 # generate-ppd.sh <model> <filter-abs-path> [models.tsv]
 #
 # Emits a complete PPD on stdout for the named model. Pure function: reads the
-# capability table and the template, writes stdout, touches nothing else.
+# capability table and the template, writes stdout, changes nothing else. The
+# result is buffered in a temporary file so it can be checked before any of it
+# reaches stdout -- a caller that sees exit 0 must never receive a broken PPD.
 #
 # Copyright (C) 2026  brother-pwg-macos contributors
 # SPDX-License-Identifier: GPL-2.0-only
@@ -36,6 +38,17 @@ TEMPLATE="$HERE/template.ppd"
 unrecognised one uses the fallback row's capabilities automatically." >&2
     exit 4
 }
+# The model name is substituted into the PPD and ends up inside PPD quoted
+# strings. It arrives from the printer's own device-id or from install.sh
+# --model, so it is not ours to trust. Reject anything outside the character
+# set real model names use, rather than trying to escape it: one double quote
+# is enough to make the PPD unparsable, and nothing downstream would notice.
+if [ -n "$(printf '%s' "$MODEL" | tr -d 'A-Za-z0-9._+ -')" ]; then
+    echo "refusing model name '$MODEL'" >&2
+    echo "allowed characters: letters, digits, space, and . _ + -" >&2
+    exit 4
+fi
+
 [ -f "$TSV" ]      || { echo "no such table: $TSV" >&2; exit 4; }
 [ -f "$TEMPLATE" ] || { echo "no such template: $TEMPLATE" >&2; exit 4; }
 
@@ -99,13 +112,22 @@ fi
 SHORTNICK=$(printf '%s' "Brother $MODEL" | cut -c1-31)
 
 # --- emit -------------------------------------------------------------------
-sed -e "s|@MODEL@|$MODEL|g" \
-    -e "s|@NICKNAME@|$NICKNAME|g" \
-    -e "s|@FILTER@|$FILTER|g" \
-    -e "s|@DEFAULT_QUALITY@|$DEFAULT_QUALITY|g" \
-    -e "s|@DEFAULT_PAGESIZE@|$DEFAULT_PAGESIZE|g" \
+# sed reads "&" in a replacement as "the whole match" and "|" as the end of the
+# expression, so every value going into one is escaped first. MODEL is already
+# restricted above; FILTER is a path the caller chose, and the rest come from
+# models.tsv, which contributors edit.
+sed_repl() { printf '%s' "$1" | sed 's/[\\&|]/\\&/g'; }
+
+OUT=$(mktemp) || { echo "cannot create a temporary file" >&2; exit 3; }
+trap 'rm -f "$OUT"' EXIT HUP INT TERM
+
+sed -e "s|@MODEL@|$(sed_repl "$MODEL")|g" \
+    -e "s|@NICKNAME@|$(sed_repl "$NICKNAME")|g" \
+    -e "s|@FILTER@|$(sed_repl "$FILTER")|g" \
+    -e "s|@DEFAULT_QUALITY@|$(sed_repl "$DEFAULT_QUALITY")|g" \
+    -e "s|@DEFAULT_PAGESIZE@|$(sed_repl "$DEFAULT_PAGESIZE")|g" \
     "$TEMPLATE" \
-| sed -e "s|^\*ShortNickName: .*|*ShortNickName: \"$SHORTNICK\"|" \
+| sed -e "s|^\*ShortNickName: .*|*ShortNickName: \"$(sed_repl "$SHORTNICK")\"|" \
 | awk -v keep="$keep_csv" -v quals="$qual_csv" -v colour="$COLOUR" '
     function kw_of(tok,   a, k) {
         split(tok, a, "/"); k = a[1]; sub(/:$/, "", k); return k
@@ -121,11 +143,39 @@ sed -e "s|@MODEL@|$MODEL|g" \
         if (index(quals, "," kw_of($2) ",") == 0) next
         print; next
     }
-    # A mono-only model loses the colour choice entirely.
+    # A mono-only model loses the colour choice entirely. The three keywords
+    # that describe the device itself have to move with it: a PPD offering
+    # only Grayscale while still declaring ColorDevice True and an RGB default
+    # colour space describes a printer that does not exist, and the print
+    # dialog believes the declaration, not the option list.
     /^\*ColorModel RGB/ { if (colour == "mono") next; print; next }
     /^\*DefaultColorModel:/ {
         if (colour == "mono") { print "*DefaultColorModel: Gray"; next }
         print; next
     }
+    /^\*ColorDevice:/ {
+        if (colour == "mono") { print "*ColorDevice: False"; next }
+        print; next
+    }
+    /^\*DefaultColorSpace:/ {
+        if (colour == "mono") { print "*DefaultColorSpace: Gray"; next }
+        print; next
+    }
     { print }
-'
+' > "$OUT"
+
+# Neither sed nor awk aborts this script when it fails, and the pipeline's exit
+# status is awk's, so a broken substitution would otherwise leave here as a
+# success. These two checks are what makes exit 0 mean something.
+if [ ! -s "$OUT" ] || ! head -1 "$OUT" | grep -q '^\*PPD-Adobe'; then
+    echo "PPD generation produced no usable output for '$MODEL'" >&2
+    exit 3
+fi
+# A leftover placeholder means a substitution silently did not happen.
+if grep -q '@[A-Z_][A-Z_]*@' "$OUT"; then
+    echo "unsubstituted placeholder left in the PPD for '$MODEL':" >&2
+    grep -n '@[A-Z_][A-Z_]*@' "$OUT" | head -3 >&2
+    exit 3
+fi
+
+cat "$OUT"
