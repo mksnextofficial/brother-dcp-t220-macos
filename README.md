@@ -44,7 +44,7 @@ PDF → cgpdftoraster → rastertopwg → rastertobrotherpjl → usb:// → prin
       └──────── stock macOS ──────┘   └── this repo ──┘   └ macOS ┘
 ```
 
-One component is ours: a ~150-line shell script. No compiled code, no Brother
+One component is ours: a ~160-line shell script. No compiled code, no Brother
 files redistributed, no disassembly and no traffic capture — Brother publishes a
 GPL Linux driver, and the protocol is legible in it.
 
