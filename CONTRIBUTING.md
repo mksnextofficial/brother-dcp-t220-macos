@@ -20,9 +20,10 @@ and no system change:
 
 ```bash
 bash test/run-all.sh
+python3 test/test_package.py
 ```
 
-The same suite runs in CI on every pull request, so a green local run is a good
+These checks run in CI on every pull request, so a green local run is a good
 predictor. The hardware checks are separate and need a printer and `sudo`:
 
 ```bash
@@ -81,7 +82,7 @@ or stripped at the boundary rather than escaped at each use.
   but must work on the bash 3.2 that ships with macOS.
 - **`set -u` everywhere.** Not `set -e`: these scripts check each step and give
   a specific message instead, which is worth more than an anonymous abort.
-- **Every test suite sources `test/lib.sh`** for `ok` / `nope` / `skip` /
+- **Shell test suites source `test/lib.sh`** for `ok` / `nope` / `skip` /
   `assert_status` / `summary`, and ends with `summary`. Do not re-declare them.
 - **Comments say why, not what.** The repository is full of measurements and
   trade-offs that are invisible from the code; those are the comments worth

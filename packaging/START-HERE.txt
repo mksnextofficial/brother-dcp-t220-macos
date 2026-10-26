@@ -1,0 +1,30 @@
+BROTHER DCP-T220 COMMUNITY DRIVER — macOS 27 — v1.0.0
+
+1. Connect the Brother DCP-T220 by USB and turn it on.
+2. Double-click Brother-DCP-T220-macOS-1.0.0.pkg.
+3. Follow Continue → Agree → Install. Enter your Mac administrator password.
+4. In any app, press Command-P and choose Brother DCP-T220 PWG / Brother_PWG.
+
+This release is unsigned / not notarized. If macOS blocks it, review the source
+and release checksums first, then use System Settings → Privacy & Security →
+Open Anyway for this specific installer if you trust it. Do not disable Gatekeeper.
+Apple's instructions: https://support.apple.com/102445
+
+If no printer was connected during installation:
+System Settings → Printers & Scanners → Add Printer → select your USB DCP-T220 →
+Use: Select Software → Brother DCP-T220 PWG. If absent, select Other and choose:
+/Library/Printers/BrotherPWG/brother-pwg.ppd
+
+Quality controls: Printer Features → Print Quality.
+EcoMode (Draft): 300 dpi, DRAFT. Normal: 600 dpi, NORMAL.
+Fine (Best): 600 dpi, HIGH. Photo: 1200 dpi, HIGH, not locally validated.
+EcoMode is a friendly label for draft, not a verified Brother ink-saving mode.
+
+Only DCP-T220 USB printing on macOS 27.0.1 Apple Silicon has been confirmed.
+No scanning, AirPrint server, Windows or iOS support. No automatic test printing.
+
+Source, releases, troubleshooting and removal:
+https://github.com/mksnextofficial/brother-dcp-t220-macos
+
+Based on https://github.com/zama-tui/brother-pwg-macos (GPL-2.0).
+Independent community software; not affiliated with Brother.

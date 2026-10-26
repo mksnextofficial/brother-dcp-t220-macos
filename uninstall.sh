@@ -117,6 +117,18 @@ else
     info "$INSTALL_DIR is not present"
 fi
 
+# Graphical distribution adds a selectable model PPD and package receipt.
+if [ -z "$remaining" ]; then
+    model_ppd="/Library/Printers/PPDs/Contents/Resources/Brother-DCP-T220-PWG.ppd"
+    if [ -f "$model_ppd" ] && grep -Fq "$FILTER_MARK" "$model_ppd"; then
+        $SUDO rm -f "$model_ppd" || die "could not remove selectable PPD"
+    fi
+    if pkgutil --pkg-info io.github.mksnextofficial.brother-dcp-t220 >/dev/null 2>&1; then
+        $SUDO pkgutil --forget io.github.mksnextofficial.brother-dcp-t220 >/dev/null \
+            || die "could not remove package receipt"
+    fi
+fi
+
 step "Done"
 if [ -n "$remaining" ]; then
     echo "  The driver files are still in place, because a queue listed above"

@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report privately, not as a public issue:
-[open a security advisory](https://github.com/zama-tui/brother-pwg-macos/security/advisories/new).
+[open a security advisory](https://github.com/mksnextofficial/brother-dcp-t220-macos/security/advisories/new).
 
 If that link does not work, private reporting has not been enabled on the
 repository yet — open a normal issue saying only that you have a security
@@ -19,9 +19,9 @@ maintained by whoever has the hardware.
 - writes `/Library/Printers/BrotherPWG/`, owned `root:wheel`, mode `755` for
   the filter and `644` for the PPD;
 - registers a CUPS print queue pointing at that PPD;
-- nothing else. It does not install a daemon, a LaunchAgent, or a kernel
+- the graphical package additionally installs a selectable PPD, README, license and package receipt. It does not install a daemon, a LaunchAgent, or a kernel
   extension, does not modify Brother's software, and does not touch queues it
-  did not create. `uninstall.sh` removes exactly those two things.
+  did not create. `uninstall.sh` removes this distribution's queues, driver files, selectable PPD and receipt.
 
 The consequence is that `filter/rastertobrotherpjl` is **executed by `cupsd`
 for every job sent to the queue**, with whatever privileges CUPS gives a
@@ -56,7 +56,7 @@ stream and CI fails the build if it appears in the source outside a comment.
 
 ## Supported versions
 
-The latest commit on `master`. There are no maintained release branches.
+The latest published release and the `main` branch. Version 1.0.0 is unsigned and not notarized. Report packaging issues here; upstream protocol issues may also be reported to the credited upstream project.
 
 ## No warranty
 

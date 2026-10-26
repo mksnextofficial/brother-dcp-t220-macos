@@ -7,3 +7,8 @@
 # Planning documents: kept locally as a record of the investigation,
 # but not part of the published repository.
 /docs/superpowers/
+
+/dist/
+/validation/
+/LOCAL-VALIDATION.md
+/Install-Brother.command

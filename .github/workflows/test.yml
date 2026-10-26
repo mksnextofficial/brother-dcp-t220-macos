@@ -28,7 +28,12 @@ jobs:
           echo "rastertopwg: $(ls /usr/libexec/cups/filter/rastertopwg 2>/dev/null || echo 'not present')"
 
       - name: Run the suite
-        run: bash test/run-all.sh
+        run: |
+          bash test/run-all.sh
+          python3 test/test_package.py
+
+      - name: Build graphical installer and disk image
+        run: bash packaging/build.sh
 
       - name: The filter must never emit @PJL DEFAULT
         # Called out as its own step so the safety rule is visible in the CI

@@ -1,0 +1,36 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-only
+# Installer runs this as root. No downloads, firmware writes or automatic printing.
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+if [ "${3:-/}" != / ]; then
+    echo 'Only installation to the running macOS system is supported.' >&2
+    exit 1
+fi
+DRIVER=/Library/Printers/BrotherPWG
+PPD="$DRIVER/brother-pwg.ppd"
+QUEUE=Brother_PWG
+# lpinfo has a bounded discovery timeout. Match this model only, never another Brother.
+URI="$(lpinfo --timeout 15 -v 2>/dev/null | awk '$1=="direct" && $2 ~ /^usb:\/\/Brother\/DCP-T220\?/ {print $2; exit}' || true)"
+if [ -z "$URI" ]; then
+    echo 'Driver installed. No USB DCP-T220 found; add it in Printers & Scanners using Brother DCP-T220 PWG.'
+    exit 0
+fi
+if lpstat -p "$QUEUE" >/dev/null 2>&1; then
+    if ! grep -Fq "$DRIVER/rastertobrotherpjl" "/etc/cups/ppd/$QUEUE.ppd"; then
+        echo 'Driver installed. An unrelated Brother_PWG queue exists; it was preserved. Add the printer manually.'
+        exit 0
+    fi
+    OLD_URI="$(lpstat -v "$QUEUE" | sed 's/.*device for [^:]*: //')"
+    if [ "$OLD_URI" != "$URI" ]; then
+        echo 'Driver installed. Brother_PWG points to a different device; it was preserved. Add this printer manually.'
+        exit 0
+    fi
+fi
+# Update in place: never delete a queue or its pending jobs.
+if lpadmin -p "$QUEUE" -D 'Brother DCP-T220 PWG' -v "$URI" -P "$PPD" -E; then
+    echo 'Brother_PWG is ready. Select it in your application print dialog.'
+else
+    echo 'Driver installed, but automatic queue setup failed. Add the printer in Printers & Scanners.' >&2
+fi
+exit 0
